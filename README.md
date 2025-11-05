@@ -1,4 +1,4 @@
-# Helena Next Auth Starter
+# CRM WHITE LABEL
 
 Stack:
 - **Next.js 15** (App Router)
