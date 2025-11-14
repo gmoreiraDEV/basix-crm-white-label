@@ -7,10 +7,10 @@ export const metadata = { title: "Helena CRM Starter", description: "Next.js + P
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>
+      <body className="w-full">
         <header className="border-b bg-white">
-          <div className="container flex items-center justify-between py-3">
-            <Link href="/" className="font-semibold">Helena Starter</Link>
+          <div className="flex items-center justify-between py-3 mx-8">
+            <Link href="/" className="font-semibold">CRM</Link>
             <nav className="space-x-4">
               <Link className="link" href="/signin">Entrar</Link>
               <Link className="link" href="/signup">Criar conta</Link>
@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </nav>
           </div>
         </header>
-        <main className="container py-8">{children}</main>
+        <main className="py-8 m-8">{children}</main>
       </body>
     </html>
   );

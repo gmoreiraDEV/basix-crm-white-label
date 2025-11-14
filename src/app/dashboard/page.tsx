@@ -13,7 +13,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       <div className="card">
         <h1 className="text-xl font-semibold mb-2">Visão geral</h1>
         <p className="text-gray-600">
