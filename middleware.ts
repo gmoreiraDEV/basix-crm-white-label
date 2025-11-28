@@ -1,20 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verify } from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { verifyToken } from "@/lib/jwt";
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (pathname.startsWith("/dashboard")) {
     const cookie = req.cookies.get("token")?.value;
-    if (!cookie) return NextResponse.redirect(new URL("/signin", req.url));
-    try {
-      verify(cookie, JWT_SECRET);
-      return NextResponse.next();
-    } catch {
-      return NextResponse.redirect(new URL("/signin", req.url));
-    }
+    const payload = cookie ? verifyToken(cookie) : null;
+    if (payload) return NextResponse.next();
+    return NextResponse.redirect(new URL("/signin", req.url));
   }
   return NextResponse.next();
 }
