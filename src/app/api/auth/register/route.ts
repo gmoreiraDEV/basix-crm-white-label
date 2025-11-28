@@ -7,6 +7,7 @@ const registerSchema = z.object({
   name: z.string().optional(),
   email: z.string().email(),
   password: z.string().min(6),
+  tenantName: z.string().min(2),
 });
 
 function slugify(value: string) {
@@ -53,22 +54,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 
-  const { email, password, name } = parsed.data;
+  const { email, password, name, tenantName } = parsed.data;
 
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     return NextResponse.json({ error: "E-mail já registrado" }, { status: 400 });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name,
-    },
-  });
 
   const plan = await prisma.subscriptionPlan.findUnique({ where: { slug: "basic" } });
   if (!plan) return NextResponse.json({ error: "Plano padrão não encontrado" }, { status: 500 });
@@ -83,11 +74,10 @@ export async function POST(req: Request) {
 
   await provisionTenantPlugins(tenant.id, plan.id);
 
-  const hash = await bcrypt.hash(password, 10);
   await prisma.user.create({
     data: {
       email,
-      password: hash,
+      password: await bcrypt.hash(password, 10),
       name,
       defaultTenantId: tenant.id,
       memberships: {

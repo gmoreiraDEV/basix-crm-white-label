@@ -1,8 +1,8 @@
 'use client';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
+import { simpleZodResolver } from "@/lib/simpleZodResolver";
 
 const schema = z.object({
   email: z.string().email(),
@@ -12,7 +12,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function SignInPage() {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: simpleZodResolver(schema) });
   const [serverError, setServerError] = useState<string | null>(null);
 
   const onSubmit = async (data: FormData) => {
