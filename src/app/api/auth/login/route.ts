@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import bcrypt from "bcryptjs";
 import { signToken } from "@/lib/jwt";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 
 export async function POST(req: Request) {
-  const { email, password } = await req.json();
-  if (!email || !password) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const parsed = loginSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  }
+
+  const { email, password } = parsed.data;
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -24,8 +35,10 @@ export async function POST(req: Request) {
   });
   if (!user) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
 
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return NextResponse.json({ error: "Senha incorreta" }, { status: 401 });
+  const isValid = await bcrypt.compare(password, user.password);
+  if (!isValid) {
+    return NextResponse.json({ error: "Credenciais incorretas" }, { status: 401 });
+  }
 
   const preferredTenant =
     user.memberships.find((m) => m.tenantId === user.defaultTenantId) || user.memberships[0];
