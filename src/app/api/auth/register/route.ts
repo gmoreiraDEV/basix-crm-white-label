@@ -1,15 +1,37 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
+
+const registerSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 
 export async function POST(req: Request) {
-  const { email, password, name } = await req.json();
-  if (!email || !password) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const parsed = registerSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  }
 
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return NextResponse.json({ error: "E-mail já cadastrado" }, { status: 409 });
+  const { email, password, name } = parsed.data;
 
-  const hash = await bcrypt.hash(password, 10);
-  await prisma.user.create({ data: { email, password: hash, name } });
-  return NextResponse.json({ ok: true });
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    return NextResponse.json({ error: "E-mail já registrado" }, { status: 400 });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  await prisma.user.create({
+    data: {
+      email,
+      password: hashedPassword,
+      name,
+    },
+  });
+
+  return NextResponse.json({ success: true });
 }
