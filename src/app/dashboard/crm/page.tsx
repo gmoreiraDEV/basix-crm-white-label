@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="CRM" description="Funis, oportunidades e tarefas." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("crm", "Funil, status e oportunidades de vendas.");
 }

@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="Painéis" description="KPIs e gráficos personalizáveis." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("dashboards", "KPIs e gráficos personalizáveis.");
 }

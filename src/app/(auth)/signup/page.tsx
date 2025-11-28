@@ -8,6 +8,7 @@ const schema = z.object({
   name: z.string().optional(),
   email: z.string().email(),
   password: z.string().min(6),
+  tenantName: z.string().min(2, "Informe o nome da empresa ou workspace"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -40,6 +41,12 @@ export default function SignUpPage() {
           <label className="label">Senha</label>
           <input className="input" type="password" {...register('password')} />
           {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password.message}</p>}
+        </div>
+        <div>
+          <label className="label">Nome da empresa / tenant</label>
+          <input className="input" type="text" {...register('tenantName')} />
+          {errors.tenantName && <p className="text-red-600 text-sm mt-1">{errors.tenantName.message}</p>}
+          <p className="text-xs text-gray-500 mt-1">Criaremos o workspace no plano Básico e habilitaremos plugins do plano.</p>
         </div>
         {serverError && <p className="text-red-600 text-sm">{serverError}</p>}
         <button className="btn" disabled={isSubmitting} type="submit">{isSubmitting ? 'Criando...' : 'Criar conta'}</button>

@@ -8,6 +8,9 @@
     "lint": "next lint",
     "postinstall": "prisma generate"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "dependencies": {
     "@prisma/client": "5.19.1",
     "@radix-ui/react-dialog": "^1.1.15",
