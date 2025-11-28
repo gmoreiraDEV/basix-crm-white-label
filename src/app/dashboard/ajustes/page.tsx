@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="Ajustes" description="Preferências, equipe e segurança." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("settings", "Configurações gerais da conta e branding.");
 }

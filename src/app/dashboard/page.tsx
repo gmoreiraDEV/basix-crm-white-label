@@ -1,39 +1,53 @@
-'use client';
-import { useEffect, useState } from "react";
 import Link from "next/link";
 
-export default function Dashboard() {
-  const [email, setEmail] = useState<string | null>(null);
+import { getAuthContextFromCookies } from "@/lib/auth-context";
+import { enabledPluginsSet } from "@/lib/feature-pages";
+import { featureCatalog, FeatureKey } from "@/lib/features";
 
-  useEffect(() => {
-    fetch('/api/me')
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => setEmail(d?.email ?? null))
-      .catch(() => setEmail(null));
-  }, []);
+const quickLinks: FeatureKey[] = ["support", "crm", "contacts", "dashboards"];
+
+export default async function Dashboard() {
+  const auth = await getAuthContextFromCookies();
+  const enabled = enabledPluginsSet(auth);
+  const availableLinks = quickLinks.filter((key) => enabled.has(key));
 
   return (
     <div className="space-y-6 w-full">
-      <div className="card">
-        <h1 className="text-xl font-semibold mb-2">Visão geral</h1>
+      <div className="card space-y-3">
+        <h1 className="text-xl font-semibold">Visão geral</h1>
         <p className="text-gray-600">
-          Olá{email ? `, ${email}` : ""}! Aqui virão os KPIs e atalhos.
+          Olá{auth?.user?.email ? `, ${auth.user.email}` : ""}! Você está em
+          {" "}
+          <span className="font-semibold">{auth?.tenant?.name ?? "workspace"}</span> com o plano
+          {" "}
+          <span className="font-semibold">{auth?.tenant?.subscriptionPlan.name ?? "-"}</span>.
+        </p>
+        <p className="text-gray-500 text-sm">
+          Plugins habilitados: {auth?.enabledPlugins.length ? auth.enabledPlugins.join(", ") : "nenhum"}.
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {[
-          { title: "Atendimentos", href: "/dashboard/atendimentos" },
-          { title: "CRM", href: "/dashboard/crm" },
-          { title: "Contatos", href: "/dashboard/contatos" },
-          { title: "Painéis", href: "/dashboard/painels" },
-        ].map((i) => (
-          <Link key={i.href} href={i.href} className="card">
-            <div className="text-lg font-medium">{i.title}</div>
-            <div className="mt-4 h-24 rounded-xl border border-dashed border-gray-300 bg-gray-50" />
-          </Link>
-        ))}
-      </div>
+      {availableLinks.length ? (
+        <div className="grid md:grid-cols-2 gap-6">
+          {availableLinks.map((key) => {
+            const item = featureCatalog[key];
+            return (
+              <Link key={key} href={item.href ?? "/dashboard"} className="card">
+                <div className="text-lg font-medium">{item.label}</div>
+                <p className="text-gray-500 text-sm mt-1">{item.description}</p>
+                <div className="mt-4 h-24 rounded-xl border border-dashed border-gray-300 bg-gray-50" />
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="card">
+          <h2 className="text-lg font-semibold">Nenhum plugin habilitado</h2>
+          <p className="text-gray-600 mt-2">
+            Solicite a um administrador para ativar recursos neste tenant ou faça upgrade de plano.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

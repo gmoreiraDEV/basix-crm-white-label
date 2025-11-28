@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="Campanhas" description="Envios, segmentação e status." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("campaigns", "Crie, gerencie e mensure campanhas multicanal.");
 }

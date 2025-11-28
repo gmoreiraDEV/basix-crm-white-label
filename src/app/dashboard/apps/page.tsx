@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="Apps" description="Integrações e apps conectados." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("apps", "Apps internos e integrações certificadas.");
 }

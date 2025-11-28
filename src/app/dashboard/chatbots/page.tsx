@@ -1,4 +1,5 @@
-import { Empty } from "@/components/empty";
-export default function Page() {
-  return <Empty title="Chatbots" description="Fluxos, canais e configurações." />;
+import { renderFeaturePage } from "@/lib/feature-pages";
+
+export default async function Page() {
+  return renderFeaturePage("chatbots", "Fluxos de automação e bots.");
 }

@@ -7,11 +7,98 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  USER
+  SUPER_ADMIN
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String         @id @default(cuid())
+  email           String         @unique
+  password        String
+  name            String?
+  role            UserRole       @default(USER)
+  defaultTenantId String?
+  defaultTenant   Tenant?        @relation("DefaultTenant", fields: [defaultTenantId], references: [id])
+  memberships     UserTenant[]
+  pluginChanges   TenantPlugin[] @relation("PluginToggleUser")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model Tenant {
+  id                 String           @id @default(cuid())
+  name               String
+  slug               String           @unique
+  subscriptionPlanId String
+  subscriptionPlan   SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
+  members            UserTenant[]
+  pluginToggles      TenantPlugin[]
+  defaultUsers       User[]           @relation("DefaultTenant")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model SubscriptionPlan {
+  id          String                   @id @default(cuid())
+  name        String
+  slug        String                   @unique
+  description String?
+  plugins     SubscriptionPlanPlugin[]
+  tenants     Tenant[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+}
+
+model Plugin {
+  id          String                   @id @default(cuid())
+  key         String                   @unique
+  name        String
+  description String?
+  category    String?
+  plans       SubscriptionPlanPlugin[]
+  tenants     TenantPlugin[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+}
+
+model SubscriptionPlanPlugin {
+  id       String           @id @default(cuid())
+  pluginId String
+  planId   String
+  plugin   Plugin           @relation(fields: [pluginId], references: [id])
+  plan     SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@unique([pluginId, planId])
+}
+
+model TenantPlugin {
+  id          String   @id @default(cuid())
+  tenantId    String
+  pluginId    String
+  enabled     Boolean  @default(true)
+  enabledAt   DateTime @default(now())
+  enabledById String?
+  enabledBy   User?    @relation("PluginToggleUser", fields: [enabledById], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  plugin      Plugin   @relation(fields: [pluginId], references: [id])
+
+  @@unique([tenantId, pluginId])
+}
+
+model UserTenant {
+  id       String     @id @default(cuid())
+  userId   String
+  tenantId String
+  role     TenantRole @default(MEMBER)
+  user     User       @relation(fields: [userId], references: [id])
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@unique([userId, tenantId])
 }
