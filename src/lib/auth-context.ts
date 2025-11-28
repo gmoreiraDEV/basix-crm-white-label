@@ -20,8 +20,9 @@ export type AuthContext = {
   planPlugins: string[];
 };
 
-function getCookieToken() {
-  return cookies().get("token")?.value ?? null;
+async function getCookieToken() {
+  const cookieStore = await cookies();
+  return cookieStore.get("token")?.value ?? null;
 }
 
 export function getTokenFromRequest(req: Request): string | null {
@@ -68,6 +69,6 @@ export async function buildAuthContext(token: string | null): Promise<AuthContex
 }
 
 export async function getAuthContextFromCookies() {
-  const token = getCookieToken();
+  const token = await getCookieToken();
   return buildAuthContext(token);
 }
