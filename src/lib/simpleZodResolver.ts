@@ -2,7 +2,7 @@ import { type FieldErrors, type FieldValues, type Resolver } from "react-hook-fo
 import { z } from "zod";
 
 export const simpleZodResolver = <
-  TSchema extends z.ZodTypeAny,
+  TSchema extends z.ZodType<FieldValues>,
   TFieldValues extends FieldValues = z.infer<TSchema>,
 >(schema: TSchema): Resolver<TFieldValues> =>
   async (values) => {
