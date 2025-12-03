@@ -86,23 +86,40 @@ export default function CsvImportPage() {
     setError(null);
     setSuccessMessage("");
 
+    const formData = new FormData();
+    formData.append("source", selectedCrm);
+    formData.append("file", file);
+
     try {
-      const response = await fetch("/api/importacoes/metadata", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: selectedCrm,
-          fileName: file.name,
-        }),
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/importacoes/metadata");
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const next = Math.min(90, Math.round((event.loaded / event.total) * 90));
+          setProgress(next);
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setProgress(100);
+            resolve();
+          } else {
+            try {
+              const payload = JSON.parse(xhr.responseText || "{}");
+              reject(new Error(payload?.error || "Falha ao enviar arquivo"));
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error("Erro ao enviar arquivo"));
+            }
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Erro de rede ao enviar arquivo"));
+        xhr.send(formData);
       });
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || "Falha ao salvar metadados");
-      }
-
-      setProgress(100);
-      setSuccessMessage("Metadados registrados e arquivo enviado com sucesso.");
+      setSuccessMessage("Arquivo enviado e metadados registrados com sucesso.");
       setFile(null);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
