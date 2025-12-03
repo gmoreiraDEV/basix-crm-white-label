@@ -35,6 +35,7 @@ model User {
   memberships     UserTenant[]
   pluginChanges   TenantPlugin[] @relation("PluginToggleUser")
   professionals   Professional[]
+  importRequests  ImportRequest[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -51,6 +52,7 @@ model Tenant {
   professionals      Professional[]
   appointments       Appointment[]
   apiKeys            TenantApiKey[]
+  importRequests     ImportRequest[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 }
@@ -160,4 +162,19 @@ model TenantApiKey {
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+}
+
+model ImportRequest {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String
+  source    String
+  fileName  String
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
 }
