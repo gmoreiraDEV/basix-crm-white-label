@@ -14,6 +14,7 @@ const plugins = [
   { key: "apps", name: "Apps", description: "Integrações e app store." },
   { key: "reports", name: "Relatórios", description: "Exportações e relatórios." },
   { key: "settings", name: "Ajustes", description: "Configurações da conta." },
+  { key: "scheduling", name: "Agendamentos", description: "Horários e reuniões com profissionais." },
 ];
 
 const plans = [
@@ -21,13 +22,25 @@ const plans = [
     name: "Básico",
     slug: "basic",
     description: "Funcionalidades essenciais para equipes enxutas.",
-    plugins: ["overview", "crm", "contacts", "settings"],
+    plugins: ["overview", "crm", "contacts", "settings", "scheduling"],
   },
   {
     name: "Pro",
     slug: "pro",
     description: "Suite completa com automações e relatórios.",
-    plugins: ["overview", "support", "crm", "contacts", "dashboards", "campaigns", "chatbots", "apps", "reports", "settings"],
+    plugins: [
+      "overview",
+      "support",
+      "crm",
+      "contacts",
+      "dashboards",
+      "campaigns",
+      "chatbots",
+      "apps",
+      "reports",
+      "settings",
+      "scheduling",
+    ],
   },
 ];
 
@@ -35,6 +48,17 @@ const tenants = [
   { name: "Acme Corp", slug: "acme", plan: "pro" },
   { name: "Contoso", slug: "contoso", plan: "basic" },
 ];
+
+const professionalsByTenant = {
+  acme: [
+    { name: "Ana Paula", title: "Consultora Sênior" },
+    { name: "Bruno Lima", title: "Especialista em Implantação" },
+  ],
+  contoso: [
+    { name: "Clara Souza", title: "Customer Success" },
+    { name: "Diego Martins", title: "Analista Comercial" },
+  ],
+};
 
 function slugify(input) {
   return input
@@ -99,6 +123,14 @@ async function ensureTenant(planRecord, tenantInput) {
       where: { tenantId_pluginId: { tenantId: tenant.id, pluginId: link.pluginId } },
       create: { tenantId: tenant.id, pluginId: link.pluginId, enabled: true },
       update: {},
+    });
+  }
+
+  for (const professional of professionalsByTenant[tenantSlug] || []) {
+    await prisma.professional.upsert({
+      where: { tenantId_name: { tenantId: tenant.id, name: professional.name } },
+      create: { tenantId: tenant.id, name: professional.name, title: professional.title },
+      update: { title: professional.title },
     });
   }
 
