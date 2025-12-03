@@ -1,6 +1,6 @@
-import { ImportJobStatus } from "@prisma/client";
-
 export type ImportSourceKey = "generic" | "hubspot" | "pipedrive" | "rd-station";
+
+export type CsvImportStatus = "VALIDATED" | "FAILED";
 
 export type NormalizedLead = {
   name?: string;
@@ -24,7 +24,7 @@ export type CsvAnalysis = {
   invalidRows: number;
   preview: CsvPreviewRow[];
   issues: CsvPreviewRow[];
-  status: ImportJobStatus;
+  status: CsvImportStatus;
 };
 
 export const importSources: Record<ImportSourceKey, { label: string; description: string }> = {
@@ -229,7 +229,7 @@ export function analyzeCsvImport(content: string, source: ImportSourceKey, delim
   }));
 
   const validRows = normalized.length - issues.length;
-  const status = issues.length === normalized.length ? ImportJobStatus.FAILED : ImportJobStatus.VALIDATED;
+  const status: CsvImportStatus = issues.length === normalized.length ? "FAILED" : "VALIDATED";
 
   return {
     totalRows: normalized.length,
