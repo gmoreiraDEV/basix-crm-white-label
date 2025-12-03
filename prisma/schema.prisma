@@ -30,6 +30,13 @@ enum AppointmentStatus {
   COMPLETED
 }
 
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id              String         @id @default(cuid())
   email           String         @unique
@@ -42,6 +49,7 @@ model User {
   imports         ImportJob[]
   pluginChanges   TenantPlugin[] @relation("PluginToggleUser")
   professionals   Professional[]
+  importJobs      ImportJob[]
   importRequests  ImportRequest[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -60,6 +68,7 @@ model Tenant {
   professionals      Professional[]
   appointments       Appointment[]
   apiKeys            TenantApiKey[]
+  importJobs         ImportJob[]
   importRequests     ImportRequest[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -190,6 +199,24 @@ model TenantApiKey {
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+}
+
+model ImportJob {
+  id            String          @id @default(cuid())
+  tenantId      String
+  userId        String
+  dedupKey      String          @unique
+  filename      String?
+  csvData       String
+  uploadedAt    DateTime        @default(now())
+  status        ImportJobStatus @default(PENDING)
+  totalRows     Int             @default(0)
+  processedRows Int             @default(0)
+  errorMessage  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  user          User            @relation(fields: [userId], references: [id])
 }
 
 model ImportRequest {
