@@ -18,10 +18,43 @@ enum TenantRole {
   MEMBER
 }
 
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum ImportAction {
+  CREATED
+  UPDATED
+  MERGED
+  SKIPPED
+}
+
+enum WebhookStatus {
+  PENDING
+  SENT
+} 
+  
+enum ImportJobStatus {
+  PENDING
+  VALIDATED
+  FAILED
+}
+
 enum AppointmentStatus {
   SCHEDULED
   CANCELLED
   COMPLETED
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model User {
@@ -33,10 +66,12 @@ model User {
   defaultTenantId String?
   defaultTenant   Tenant?        @relation("DefaultTenant", fields: [defaultTenantId], references: [id])
   memberships     UserTenant[]
+  imports         ImportJob[]
   pluginChanges   TenantPlugin[] @relation("PluginToggleUser")
   professionals   Professional[]
   importJobs      ImportJob[]
   importLogs      ImportLog[]
+  importRequests  ImportRequest[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -49,13 +84,37 @@ model Tenant {
   subscriptionPlan   SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
   members            UserTenant[]
   pluginToggles      TenantPlugin[]
+  imports            ImportJob[]
   defaultUsers       User[]           @relation("DefaultTenant")
   professionals      Professional[]
   appointments       Appointment[]
   apiKeys            TenantApiKey[]
+  contacts           Contact[]
   importJobs         ImportJob[]
+  importRequests     ImportRequest[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  WebhookEvent       WebhookEvent[]
+}
+
+model ImportJob {
+  id          String          @id @default(cuid())
+  tenantId    String
+  userId      String
+  source      String
+  fileName    String
+  status      ImportJobStatus @default(PENDING)
+  totalRows   Int             @default(0)
+  validRows   Int             @default(0)
+  invalidRows Int             @default(0)
+  message     String?
+  preview     Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
 }
 
 model SubscriptionPlan {
@@ -205,4 +264,125 @@ model TenantApiKey {
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+}
+
+model Contact {
+  id         String         @id @default(cuid())
+  tenantId   String
+  externalId String?
+  name       String
+  email      String?
+  phone      String?
+  tags       String[]       @default([])
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  logs       ImportRecord[]
+
+  @@unique([tenantId, externalId])
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model ImportJob {
+  id               String         @id @default(cuid())
+  tenantId         String
+  status           ImportStatus   @default(PENDING)
+  source           String?
+  externalUploadId String?
+  dryRun           Boolean        @default(false)
+  totalRecords     Int            @default(0)
+  processedRecords Int            @default(0)
+  failedRecords    Int            @default(0)
+  errorMessage     String?
+  startedAt        DateTime?      @default(now())
+  completedAt      DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  records          ImportRecord[]
+  changes          ImportChange[]
+  webhooks         WebhookEvent[]
+
+  @@index([tenantId, status])
+}
+
+model ImportRecord {
+  id           String       @id @default(cuid())
+  jobId        String
+  contactId    String?
+  externalId   String?
+  action       ImportAction
+  note         String?
+  mergedIntoId String?
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  job          ImportJob    @relation(fields: [jobId], references: [id])
+  contact      Contact?     @relation(fields: [contactId], references: [id])
+
+  @@index([jobId])
+  @@index([contactId])
+}
+
+model ImportChange {
+  id         String    @id @default(cuid())
+  jobId      String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime  @default(now())
+  job        ImportJob @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+model WebhookEvent {
+  id        String        @id @default(cuid())
+  tenantId  String
+  jobId     String?
+  type      String
+  payload   Json
+  status    WebhookStatus @default(PENDING)
+  lastError String?
+  createdAt DateTime      @default(now())
+  sentAt    DateTime?
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  job       ImportJob?    @relation(fields: [jobId], references: [id])
+
+  @@index([tenantId, status])
+model ImportJob {
+  id            String          @id @default(cuid())
+  tenantId      String
+  userId        String
+  dedupKey      String          @unique
+  filename      String?
+  csvData       String
+  uploadedAt    DateTime        @default(now())
+  status        ImportJobStatus @default(PENDING)
+  totalRows     Int             @default(0)
+  processedRows Int             @default(0)
+  errorMessage  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  user          User            @relation(fields: [userId], references: [id])
+}
+
+model ImportRequest {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String
+  source    String
+  fileName  String
+  filePath  String
+  fileSize  Int
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
 }
