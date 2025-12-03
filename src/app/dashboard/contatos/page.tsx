@@ -1,10 +1,15 @@
 import { FeatureUnavailable } from "@/components/feature-unavailable";
 import { getAuthContextFromCookies } from "@/lib/auth-context";
 import { featureCatalog, featureEnabled } from "@/lib/features";
+import { CrmImporter } from "@/app/dashboard/contatos/crm-importer";
+import { getAuthContextFromCookies } from "@/lib/auth-context";
+import { featureCatalog, featureEnabled } from "@/lib/features";
+
 import { ImportJobClient } from "./import-job-client";
 
 export default async function Page() {
   const auth = await getAuthContextFromCookies();
+  const featureKey = "contacts" as const;
 
   if (!featureEnabled(auth, "contacts")) {
     const feature = featureCatalog.contacts;
