@@ -1,250 +1,410 @@
-export type ImportSourceKey = "generic" | "hubspot" | "pipedrive" | "rd-station";
+import { Readable } from "node:stream";
 
-export type CsvImportStatus = "VALIDATED" | "FAILED";
+export type ImportIssueLevel = "error" | "warning";
 
-export type NormalizedLead = {
-  name?: string;
-  email?: string;
-  phone?: string;
-  company?: string;
-  externalId?: string;
-  owner?: string;
-  tags?: string[];
+export type ImportIssue = {
+  line: number;
+  level: ImportIssueLevel;
+  message: string;
+  field?: string;
+  value?: string | null;
 };
 
-export type CsvPreviewRow = {
-  index: number;
-  lead: NormalizedLead;
-  issues: string[];
+export type ImportPreviewRow = {
+  line: number;
+  values: Record<string, string>;
+  issues: ImportIssue[];
 };
 
-export type CsvAnalysis = {
+export type ImportValidationResult = {
+  headers: string[];
+  preview: ImportPreviewRow[];
   totalRows: number;
   validRows: number;
-  invalidRows: number;
-  preview: CsvPreviewRow[];
-  issues: CsvPreviewRow[];
-  status: CsvImportStatus;
+  errorCount: number;
+  warningCount: number;
+  duplicateEmails: number;
+  duplicateExternalIds: number;
+  issues: ImportIssue[];
 };
 
-export const importSources: Record<ImportSourceKey, { label: string; description: string }> = {
-  generic: { label: "CSV genérico", description: "Planilha estruturada com colunas de contatos." },
-  hubspot: { label: "HubSpot", description: "Exportação de contatos ou empresas do HubSpot." },
-  pipedrive: { label: "Pipedrive", description: "Exportação de pessoas e organizações do Pipedrive." },
-  "rd-station": { label: "RD Station", description: "Leads exportados do RD Station Marketing." },
+type ValidationConfig = {
+  requiredFields: string[];
+  emailField: string;
+  phoneField: string;
+  externalIdField: string;
+  dateFields: string[];
+  maxPreviewRows: number;
 };
 
-const baseMapping: Record<string, keyof NormalizedLead> = {
-  name: "name",
-  "full name": "name",
-  fullname: "name",
-  "first name": "name",
-  firstname: "name",
-  "last name": "name",
-  lastname: "name",
-  email: "email",
-  mail: "email",
-  telefone: "phone",
-  phone: "phone",
-  mobile: "phone",
-  celular: "phone",
-  company: "company",
-  empresa: "company",
-  organization: "company",
-  organisation: "company",
-  owner: "owner",
-  "crm owner": "owner",
-  tags: "tags",
-  label: "tags",
-  labels: "tags",
-  "external id": "externalId",
-  id: "externalId",
-  "record id": "externalId",
+const defaultConfig: ValidationConfig = {
+  requiredFields: ["name", "email", "externalId"],
+  emailField: "email",
+  phoneField: "phone",
+  externalIdField: "externalId",
+  dateFields: ["birthDate"],
+  maxPreviewRows: 20,
 };
 
-const sourceSpecificMapping: Record<ImportSourceKey, Record<string, keyof NormalizedLead>> = {
-  generic: {},
-  hubspot: {
-    "hs_object_id": "externalId",
-    "hubspot owner": "owner",
-    "deal owner": "owner",
-    "associated company": "company",
-  },
-  pipedrive: {
-    "organization name": "company",
-    "org name": "company",
-    "person name": "name",
-    "person phone": "phone",
-    "person email": "email",
-    "owner name": "owner",
-    "owner email": "owner",
-  },
-  "rd-station": {
-    lead: "name",
-    "lead id": "externalId",
-    "client id": "externalId",
-    origem: "owner",
-  },
-};
+export async function validateCsvImport(
+  body: ReadableStream<Uint8Array>,
+  config: Partial<ValidationConfig> = {}
+): Promise<ImportValidationResult> {
+  const merged = { ...defaultConfig, ...config } satisfies ValidationConfig;
 
-function normalizeHeader(value: string) {
-  return value.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").toLowerCase();
+  const decoder = new TextDecoder();
+  const preview: ImportPreviewRow[] = [];
+  const issues: ImportIssue[] = [];
+  const seenEmails = new Set<string>();
+  const seenExternalIds = new Set<string>();
+
+  let buffer = "";
+  let headers: string[] | null = null;
+  let lineNumber = 0;
+  let totalRows = 0;
+  let validRows = 0;
+  let duplicateEmails = 0;
+  let duplicateExternalIds = 0;
+
+  const stream = Readable.fromWeb(body as any);
+
+  for await (const chunk of stream) {
+    buffer += decoder.decode(chunk as Buffer, { stream: true });
+    let newlineIndex: number;
+
+    while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+      const rawLine = buffer.slice(0, newlineIndex).replace(/\r$/, "");
+      buffer = buffer.slice(newlineIndex + 1);
+      lineNumber += 1;
+
+      if (headers === null) {
+        headers = parseCsvLine(rawLine);
+        registerMissingHeaders(headers, merged.requiredFields, lineNumber, issues);
+        continue;
+      }
+
+      if (!rawLine.trim()) continue;
+
+      const columns = parseCsvLine(rawLine);
+      const row = mapRow(headers, columns);
+      totalRows += 1;
+      const rowIssues: ImportIssue[] = [];
+
+      runRequiredValidation(row, merged.requiredFields, lineNumber, rowIssues);
+      runEmailValidation(row, merged.emailField, lineNumber, rowIssues, seenEmails, () => {
+        duplicateEmails += 1;
+      });
+      runPhoneValidation(row, merged.phoneField, lineNumber, rowIssues);
+      runDateValidation(row, merged.dateFields, lineNumber, rowIssues);
+      runExternalIdValidation(
+        row,
+        merged.externalIdField,
+        lineNumber,
+        rowIssues,
+        seenExternalIds,
+        () => {
+          duplicateExternalIds += 1;
+        }
+      );
+
+      const hasCritical = rowIssues.some((issue) => issue.level === "error");
+      if (!hasCritical) validRows += 1;
+
+      if (preview.length < merged.maxPreviewRows) {
+        preview.push({ line: lineNumber, values: row, issues: rowIssues });
+      }
+
+      issues.push(...rowIssues);
+    }
+  }
+
+  buffer += decoder.decode();
+
+  if (buffer.length) {
+    lineNumber += 1;
+    if (headers === null) {
+      headers = parseCsvLine(buffer);
+      registerMissingHeaders(headers, merged.requiredFields, lineNumber, issues);
+    } else {
+      const columns = parseCsvLine(buffer.replace(/\r$/, ""));
+      const row = mapRow(headers, columns);
+      totalRows += 1;
+      const rowIssues: ImportIssue[] = [];
+
+      runRequiredValidation(row, merged.requiredFields, lineNumber, rowIssues);
+      runEmailValidation(row, merged.emailField, lineNumber, rowIssues, seenEmails, () => {
+        duplicateEmails += 1;
+      });
+      runPhoneValidation(row, merged.phoneField, lineNumber, rowIssues);
+      runDateValidation(row, merged.dateFields, lineNumber, rowIssues);
+      runExternalIdValidation(
+        row,
+        merged.externalIdField,
+        lineNumber,
+        rowIssues,
+        seenExternalIds,
+        () => {
+          duplicateExternalIds += 1;
+        }
+      );
+
+      const hasCritical = rowIssues.some((issue) => issue.level === "error");
+      if (!hasCritical) validRows += 1;
+
+      if (preview.length < merged.maxPreviewRows) {
+        preview.push({ line: lineNumber, values: row, issues: rowIssues });
+      }
+
+      issues.push(...rowIssues);
+    }
+  }
+
+  const errorCount = issues.filter((issue) => issue.level === "error").length;
+  const warningCount = issues.filter((issue) => issue.level === "warning").length;
+
+  return {
+    headers: headers ?? [],
+    preview,
+    totalRows,
+    validRows,
+    errorCount,
+    warningCount,
+    duplicateEmails,
+    duplicateExternalIds,
+    issues,
+  };
 }
 
-function detectDelimiter(content: string) {
-  const sample = content.split(/\r?\n/).find((line) => line.trim().length > 0) ?? ",";
-  const commaCount = (sample.match(/,/g) || []).length;
-  const semicolonCount = (sample.match(/;/g) || []).length;
-  return semicolonCount > commaCount ? ";" : ",";
+export function issueReportAsCsv(issues: ImportIssue[]) {
+  const header = "line,level,field,message,value";
+  const rows = issues.map((issue) =>
+    [
+      issue.line,
+      issue.level,
+      issue.field ?? "",
+      escapeCsvValue(issue.message),
+      escapeCsvValue(issue.value ?? ""),
+    ].join(",")
+  );
+  return [header, ...rows].join("\n");
 }
 
-function parseLine(line: string, delimiter: string) {
+export function issueReportAsJson(issues: ImportIssue[]) {
+  return JSON.stringify({ issues }, null, 2);
+}
+
+function parseCsvLine(line: string) {
   const values: string[] = [];
   let current = "";
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
+  for (let i = 0; i < line.length; i += 1) {
     const char = line[i];
     if (char === "\"") {
-      if (inQuotes && line[i + 1] === "\"") {
+      const next = line[i + 1];
+      if (inQuotes && next === "\"") {
         current += "\"";
-        i++;
+        i += 1;
       } else {
         inQuotes = !inQuotes;
       }
-      continue;
-    }
-
-    if (char === delimiter && !inQuotes) {
-      values.push(current.trim());
+    } else if (char === "," && !inQuotes) {
+      values.push(current);
       current = "";
-      continue;
+    } else {
+      current += char;
     }
-
-    current += char;
   }
 
-  values.push(current.trim());
-  return values;
+  values.push(current);
+  return values.map((value) => value.trim());
 }
 
-export function parseCsv(content: string, delimiter?: string) {
-  const sanitized = content.replace(/^\uFEFF/, "");
-  const detectedDelimiter = delimiter && delimiter.length === 1 ? delimiter : detectDelimiter(sanitized);
-  const lines = sanitized
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (!lines.length) {
-    return { headers: [] as string[], rows: [] as Record<string, string>[] };
-  }
-
-  const headers = parseLine(lines[0], detectedDelimiter);
-  const rows = lines.slice(1).map((line) => {
-    const cells = parseLine(line, detectedDelimiter);
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = cells[index] ?? "";
-    });
-    return record;
+function mapRow(headers: string[], values: string[]) {
+  const row: Record<string, string> = {};
+  headers.forEach((header, index) => {
+    row[header] = values[index] ?? "";
   });
-
-  return { headers, rows };
+  return row;
 }
 
-function mapField(header: string, source: ImportSourceKey) {
-  const normalized = normalizeHeader(header);
-  const sourceMapping = sourceSpecificMapping[source];
-  return sourceMapping[normalized] ?? baseMapping[normalized] ?? null;
+function registerMissingHeaders(
+  headers: string[],
+  requiredFields: string[],
+  lineNumber: number,
+  issues: ImportIssue[]
+) {
+  requiredFields
+    .filter((field) => !headers.includes(field))
+    .forEach((field) =>
+      issues.push({
+        line: lineNumber,
+        field,
+        level: "error",
+        message: `Cabeçalho obrigatório ausente: ${field}`,
+      })
+    );
 }
 
-function validateLead(lead: NormalizedLead) {
-  const issues: string[] = [];
-  if (!lead.name && !lead.email && !lead.phone) {
-    issues.push("Inclua ao menos nome, e-mail ou telefone.");
-  }
-  if (lead.email && !/^\S+@\S+\.\S+$/.test(lead.email)) {
-    issues.push("E-mail com formato inválido.");
-  }
-  const digits = lead.phone?.replace(/\D/g, "") ?? "";
-  if (lead.phone && digits.length < 8) {
-    issues.push("Telefone muito curto para validar.");
-  }
-  return issues;
-}
-
-export function normalizeRows(
-  rows: Record<string, string>[],
-  source: ImportSourceKey
-): { normalized: NormalizedLead[]; issues: CsvPreviewRow[] } {
-  const normalized: NormalizedLead[] = [];
-  const issues: CsvPreviewRow[] = [];
-
-  rows.forEach((row, index) => {
-    const nameParts: string[] = [];
-    const result: NormalizedLead = {};
-
-    Object.entries(row).forEach(([header, rawValue]) => {
-      const value = String(rawValue ?? "").trim();
-      if (!value) return;
-      const field = mapField(header, source);
-      if (!field) return;
-      if (field === "name" && /last\s?name|sobrenome/i.test(header)) {
-        nameParts.push(value);
-        return;
-      }
-      if (field === "name" && /first\s?name|nome/i.test(header)) {
-        nameParts.unshift(value);
-        return;
-      }
-      if (field === "tags") {
-        result.tags = [...(result.tags ?? []), ...value.split(/[,;]+/).map((tag) => tag.trim()).filter(Boolean)];
-        return;
-      }
-      result[field] = value;
-    });
-
-    if (!result.name && nameParts.length) {
-      result.name = nameParts.join(" ").trim();
+function runRequiredValidation(
+  row: Record<string, string>,
+  requiredFields: string[],
+  lineNumber: number,
+  issues: ImportIssue[]
+) {
+  requiredFields.forEach((field) => {
+    const value = (row[field] ?? "").trim();
+    if (!value) {
+      issues.push({
+        line: lineNumber,
+        field,
+        level: "error",
+        message: `Campo obrigatório ausente: ${field}`,
+        value,
+      });
     }
-
-    const rowIssues = validateLead(result);
-    if (rowIssues.length) {
-      issues.push({ index, lead: result, issues: rowIssues });
-    }
-    normalized.push(result);
   });
-
-  return { normalized, issues };
 }
 
-export function analyzeCsvImport(content: string, source: ImportSourceKey, delimiter?: string): CsvAnalysis {
-  const parsed = parseCsv(content, delimiter);
-  const { normalized, issues } = normalizeRows(parsed.rows, source);
-  const preview = normalized.slice(0, 20).map((lead, index) => ({
-    index,
-    lead,
-    issues: issues.find((issue) => issue.index === index)?.issues ?? [],
-  }));
+function runEmailValidation(
+  row: Record<string, string>,
+  field: string,
+  lineNumber: number,
+  issues: ImportIssue[],
+  seenEmails: Set<string>,
+  onDuplicate: () => void
+) {
+  const rawValue = (row[field] ?? "").trim();
+  if (!rawValue) return;
 
-  const validRows = normalized.length - issues.length;
-  const status: CsvImportStatus = issues.length === normalized.length ? "FAILED" : "VALIDATED";
+  const normalized = rawValue.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawValue)) {
+    issues.push({
+      line: lineNumber,
+      field,
+      level: "error",
+      message: "Formato de e-mail inválido",
+      value: rawValue,
+    });
+    return;
+  }
 
-  return {
-    totalRows: normalized.length,
-    validRows,
-    invalidRows: issues.length,
-    preview,
-    issues,
-    status,
-  };
+  if (seenEmails.has(normalized)) {
+    onDuplicate();
+    issues.push({
+      line: lineNumber,
+      field,
+      level: "error",
+      message: "E-mail duplicado no arquivo",
+      value: rawValue,
+    });
+  } else {
+    seenEmails.add(normalized);
+  }
 }
 
-export function csvTemplate() {
-  return [
-    "name,email,phone,company,externalId,tags",
-    "Maria Silva,maria@example.com,11999999999,Exemplo SA,hub-123,cliente;vip",
-    "João Lima,joao@example.com,21988888888,Lima Tech,pipedrive-456,lead quente",
-  ].join("\n");
+function runPhoneValidation(
+  row: Record<string, string>,
+  field: string,
+  lineNumber: number,
+  issues: ImportIssue[]
+) {
+  const rawValue = (row[field] ?? "").trim();
+  if (!rawValue) return;
+
+  const digits = rawValue.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) {
+    issues.push({
+      line: lineNumber,
+      field,
+      level: "warning",
+      message: "Telefone com quantidade de dígitos inesperada",
+      value: rawValue,
+    });
+  }
+}
+
+function runDateValidation(
+  row: Record<string, string>,
+  fields: string[],
+  lineNumber: number,
+  issues: ImportIssue[]
+) {
+  fields.forEach((field) => {
+    const rawValue = (row[field] ?? "").trim();
+    if (!rawValue) return;
+
+    if (!isValidDate(rawValue)) {
+      issues.push({
+        line: lineNumber,
+        field,
+        level: "error",
+        message: "Formato de data inválido (use AAAA-MM-DD ou DD/MM/AAAA)",
+        value: rawValue,
+      });
+    }
+  });
+}
+
+function runExternalIdValidation(
+  row: Record<string, string>,
+  field: string,
+  lineNumber: number,
+  issues: ImportIssue[],
+  seenExternalIds: Set<string>,
+  onDuplicate: () => void
+) {
+  const rawValue = (row[field] ?? "").trim();
+  if (!rawValue) {
+    issues.push({
+      line: lineNumber,
+      field,
+      level: "error",
+      message: `Campo obrigatório ausente: ${field}`,
+      value: rawValue,
+    });
+    return;
+  }
+
+  if (seenExternalIds.has(rawValue)) {
+    onDuplicate();
+    issues.push({
+      line: lineNumber,
+      field,
+      level: "error",
+      message: "ID externo duplicado no arquivo",
+      value: rawValue,
+    });
+  } else {
+    seenExternalIds.add(rawValue);
+  }
+}
+
+function isValidDate(value: string) {
+  const isoLike = /^\d{4}-\d{2}-\d{2}$/;
+  const ptLike = /^\d{2}\/\d{2}\/\d{4}$/;
+
+  if (isoLike.test(value)) {
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime());
+  }
+
+  if (ptLike.test(value)) {
+    const [day, month, year] = value.split("/").map(Number);
+    const date = new Date(year, month - 1, day);
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    );
+  }
+
+  return false;
+}
+
+function escapeCsvValue(value: string) {
+  const needsQuotes = /[",\n]/.test(value);
+  const escaped = value.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
 }
