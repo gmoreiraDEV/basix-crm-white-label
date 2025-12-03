@@ -1,4 +1,4 @@
-import { Readable } from "node:stream";
+import { Readable } from "stream";
 
 export type ImportIssueLevel = "error" | "warning";
 
