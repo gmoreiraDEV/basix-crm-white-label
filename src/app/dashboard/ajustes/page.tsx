@@ -8,7 +8,7 @@ import { featureEnabled } from "@/lib/features";
 export default async function Page() {
   const auth = await getAuthContextFromCookies();
 
-  if (!auth?.tenant || !featureEnabled(auth, "settings")) {
+  if (!auth || !auth.tenant || !featureEnabled(auth, "settings")) {
     return (
       <FeatureUnavailable
         featureKey="settings"
@@ -18,8 +18,20 @@ export default async function Page() {
     );
   }
 
+  const tenant = auth.tenant;
+  const membership = auth.user.memberships.find((m) => m.tenantId === tenant.id);
+  if (!membership || membership.role === "MEMBER") {
+    return (
+      <FeatureUnavailable
+        featureKey="settings"
+        planName={tenant.subscriptionPlan.name}
+        description="Apenas administradores podem visualizar ou gerenciar chaves de API deste tenant."
+      />
+    );
+  }
+
   const apiKeys = await prisma.tenantApiKey.findMany({
-    where: { tenantId: auth.tenant.id },
+    where: { tenantId: tenant.id },
     orderBy: { createdAt: "desc" },
   });
 
