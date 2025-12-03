@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { JWTPayload, verifyToken } from "@/lib/jwt";
-import { Tenant, User } from "@prisma/client";
+import { Tenant, TenantRole, User } from "@prisma/client";
 
 type TenantWithRelations = Tenant & {
   subscriptionPlan: {
@@ -14,7 +14,7 @@ type TenantWithRelations = Tenant & {
 };
 
 export type AuthContext = {
-  user: User & { memberships: { tenantId: string }[] };
+  user: User & { memberships: { tenantId: string; role: TenantRole }[] };
   tenant: TenantWithRelations | null;
   enabledPlugins: string[];
   planPlugins: string[];
