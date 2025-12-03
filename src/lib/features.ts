@@ -10,7 +10,8 @@ export type FeatureKey =
   | "chatbots"
   | "apps"
   | "reports"
-  | "settings";
+  | "settings"
+  | "scheduling";
 
 export const featureCatalog: Record<FeatureKey, { label: string; description: string; href?: string }> = {
   overview: {
@@ -62,6 +63,11 @@ export const featureCatalog: Record<FeatureKey, { label: string; description: st
     label: "Ajustes",
     description: "Configurações gerais da conta.",
     href: "/dashboard/ajustes",
+  },
+  scheduling: {
+    label: "Agendamentos",
+    description: "Horários e reuniões com profissionais do tenant.",
+    href: "/dashboard/agendamentos",
   },
 };
 
