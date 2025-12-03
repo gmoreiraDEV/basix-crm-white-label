@@ -18,6 +18,27 @@ enum TenantRole {
   MEMBER
 }
 
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum ImportAction {
+  CREATED
+  UPDATED
+  MERGED
+  SKIPPED
+}
+
+enum WebhookStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum AppointmentStatus {
   SCHEDULED
   CANCELLED
@@ -51,8 +72,11 @@ model Tenant {
   professionals      Professional[]
   appointments       Appointment[]
   apiKeys            TenantApiKey[]
+  contacts           Contact[]
+  importJobs         ImportJob[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  WebhookEvent       WebhookEvent[]
 }
 
 model SubscriptionPlan {
@@ -160,4 +184,92 @@ model TenantApiKey {
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+}
+
+model Contact {
+  id         String         @id @default(cuid())
+  tenantId   String
+  externalId String?
+  name       String
+  email      String?
+  phone      String?
+  tags       String[]       @default([])
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  logs       ImportRecord[]
+
+  @@unique([tenantId, externalId])
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model ImportJob {
+  id               String         @id @default(cuid())
+  tenantId         String
+  status           ImportStatus   @default(PENDING)
+  source           String?
+  externalUploadId String?
+  dryRun           Boolean        @default(false)
+  totalRecords     Int            @default(0)
+  processedRecords Int            @default(0)
+  failedRecords    Int            @default(0)
+  errorMessage     String?
+  startedAt        DateTime?      @default(now())
+  completedAt      DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  records          ImportRecord[]
+  changes          ImportChange[]
+  webhooks         WebhookEvent[]
+
+  @@index([tenantId, status])
+}
+
+model ImportRecord {
+  id           String       @id @default(cuid())
+  jobId        String
+  contactId    String?
+  externalId   String?
+  action       ImportAction
+  note         String?
+  mergedIntoId String?
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  job          ImportJob    @relation(fields: [jobId], references: [id])
+  contact      Contact?     @relation(fields: [contactId], references: [id])
+
+  @@index([jobId])
+  @@index([contactId])
+}
+
+model ImportChange {
+  id         String    @id @default(cuid())
+  jobId      String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime  @default(now())
+  job        ImportJob @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+model WebhookEvent {
+  id        String        @id @default(cuid())
+  tenantId  String
+  jobId     String?
+  type      String
+  payload   Json
+  status    WebhookStatus @default(PENDING)
+  lastError String?
+  createdAt DateTime      @default(now())
+  sentAt    DateTime?
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  job       ImportJob?    @relation(fields: [jobId], references: [id])
+
+  @@index([tenantId, status])
 }
